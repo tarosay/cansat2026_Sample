@@ -17,7 +17,8 @@
  *   消灯     = 待機中
  *
  * ボード : HID ProMicro CH32V003  (Board Version: V1.4)
- *          FQBN: UIAP_HID:ch32v:CH32V003:opt=oslto
+ *          Tools → USB: No USB (SD log / UART only)
+ *          FQBN: UIAP_HID:ch32v:CH32V003:usb=nousb,opt=oslto
  */
 
 #include <Arduino.h>
