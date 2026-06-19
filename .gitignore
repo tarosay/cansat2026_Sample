@@ -39,3 +39,12 @@
 
 # debug information files
 *.dwo
+
+# Local Codex notes
+CODEX_MEMORY.md
+
+# Claude Code session files
+.claude/
+
+# Obsolete local sketch name
+Programs/M5StampS3A/ENV3BMP280_1/
