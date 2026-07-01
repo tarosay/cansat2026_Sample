@@ -2,6 +2,15 @@
 
 缶サット講習会2026 の公開サンプルデータです。
 
+## リポジトリ構成
+
+| フォルダ | 内容 |
+|---|---|
+| `Programs` | Arduino スケッチ一式（`M5StampS3A` 以下、詳細は下記参照）|
+| `Schematic` | 基板の回路図・ガーバーデータ（CanSat 本体基板、UIAP_Log 基板）|
+| `3D-CAD` | CanSat 筐体の3D CADデータ（STL / rsdocx）|
+| `Documents` | 事前学習資料（スライド）、モデルロケットの図面（JWW/PDF）|
+
 ## 対応ハードウェア
 
 - **メインボード**: M5Stamp S3A (ESP32-S3)
