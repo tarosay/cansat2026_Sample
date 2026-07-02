@@ -18,14 +18,20 @@ I2C_MPU6886 imu(I2C_MPU6886_DEFAULT_ADDRESS, Wire);
 static constexpr uint8_t MPU6886_WHO_AM_I_VALUE = 0x19;
 static constexpr uint8_t I2C_SDA_PIN = 13;
 static constexpr uint8_t I2C_SCL_PIN = 15;
+static constexpr uint8_t LIGHT_A_PIN = 5;
+static constexpr uint8_t LIGHT_D_PIN = 7;
 static constexpr uint32_t LOG_INTERVAL_MS = 50;  // 20Hz
-static constexpr size_t CSV_ROW_MAX_LENGTH = 192;
+static constexpr size_t CSV_ROW_MAX_LENGTH = 208;
 
 static uint32_t lastLogMs = 0;
 static uint32_t rowCount = 0;
-static float groundPressurePa = 101325.0f;
+static float refAltitude = 0.0f;  // 起動時（地上）の海抜高度 [m]。相対高度の基準点
 
-// 地上気圧を基準とした相対高度 [m]（打ち上げ地点 = 0m）
+// 【参考】地上気圧 refPa を基準とした相対高度 [m] を直接計算する式。
+// 現在はライブラリの標準メソッド（qmp.altitude）を使うため未使用ですが、
+// 高度計算の式を学ぶための参考として残しています。
+// qmp.altitude も同じ形の式（ただし基準気圧は 101325 Pa 固定）で計算されています。
+// ※標準メソッド化の改修は Claude Fable 5（Anthropic の AI）が実施（2026-07-02）
 static float calcAltitude(float pressurePa, float tempC, float refPa) {
   return (powf(refPa / pressurePa, 1.0f / 5.257f) - 1.0f) * (tempC + 273.15f) / 0.0065f;
 }
@@ -70,19 +76,23 @@ void setup() {
 
   ledBegin();
 
+  pinMode(LIGHT_A_PIN, INPUT);
+  pinMode(LIGHT_D_PIN, INPUT);
+
   Wire.begin(I2C_SDA_PIN, I2C_SCL_PIN);
   Wire.setClock(400000);
 
   setupEnv3();
   setupImu();
 
-  // 地上気圧を記録（高度基準点 = 0m）
+  // 起動時の海抜高度を基準点として記録（打ち上げ地点 = 0m）
+  // qmp.altitude は update() のたびにライブラリが計算する海抜高度 [m]
   for (int i = 0; i < 10; i++) {
     qmp.update();
     delay(100);
   }
-  groundPressurePa = qmp.pressure;
-  Serial.printf("Ground pressure: %.2f Pa\n", groundPressurePa);
+  refAltitude = qmp.altitude;
+  Serial.printf("Reference altitude: %.2f m\n", refAltitude);
 
   if (!csvLog.begin()) {
     stopWithError("CsvLogStore begin failed.");
@@ -104,7 +114,8 @@ void setup() {
     "qmp_temperature_c,pressure_pa,altitude_m,"
     "accel_x_g,accel_y_g,accel_z_g,"
     "gyro_x_dps,gyro_y_dps,gyro_z_dps,"
-    "imu_temperature_c");
+    "imu_temperature_c,"
+    "light_v,light_d");
 
   if (!csvResult.ok) {
     stopWithError("CSV header write failed.");
@@ -142,22 +153,27 @@ void loop() {
   imu.getGyro(&gyroXDps, &gyroYDps, &gyroZDps);
   imu.getTemp(&imuTempC);
 
+  float lightV = 3.3f * analogRead(LIGHT_A_PIN) / 4095.0f;
+  int lightD = digitalRead(LIGHT_D_PIN);
+
   uint32_t timeMs = millis();
 
   snprintf(
     csvLine,
     sizeof(csvLine),
-    "%lu,%lu,%.2f,%.2f,%.2f,%.2f,%.2f,%.6f,%.6f,%.6f,%.6f,%.6f,%.6f,%.2f",
+    "%lu,%lu,%.2f,%.2f,%.2f,%.2f,%.2f,%.6f,%.6f,%.6f,%.6f,%.6f,%.6f,%.2f,%.2f,%d",
     (unsigned long)timeMs,
     (unsigned long)rowCount,
     shtTemp,
     shtHumidity,
     qmp.cTemp,
     qmp.pressure,
-    calcAltitude(qmp.pressure, qmp.cTemp, groundPressurePa),
+    qmp.altitude - refAltitude,  // 海抜高度から基準高度を引いて相対高度に
     accelXG, accelYG, accelZG,
     gyroXDps, gyroYDps, gyroZDps,
-    imuTempC);
+    imuTempC,
+    lightV,
+    lightD);
 
   csvResult = csvLog.println(csvLine);
 

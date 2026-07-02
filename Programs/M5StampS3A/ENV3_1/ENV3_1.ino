@@ -20,9 +20,13 @@ static constexpr size_t CSV_ROW_MAX_LENGTH = 128;
 
 static uint32_t lastLogMs = 0;
 static uint32_t rowCount = 0;
-static float groundPressurePa = 101325.0f;
+static float refAltitude = 0.0f;  // 起動時（地上）の海抜高度 [m]。相対高度の基準点
 
-// 地上気圧を基準とした相対高度 [m]（打ち上げ地点 = 0m）
+// 【参考】地上気圧 refPa を基準とした相対高度 [m] を直接計算する式。
+// 現在はライブラリの標準メソッド（qmp.altitude）を使うため未使用ですが、
+// 高度計算の式を学ぶための参考として残しています。
+// qmp.altitude も同じ形の式（ただし基準気圧は 101325 Pa 固定）で計算されています。
+// ※標準メソッド化の改修は Claude Fable 5（Anthropic の AI）が実施（2026-07-02）
 static float calcAltitude(float pressurePa, float tempC, float refPa) {
   return (powf(refPa / pressurePa, 1.0f / 5.257f) - 1.0f) * (tempC + 273.15f) / 0.0065f;
 }
@@ -59,13 +63,14 @@ void setup() {
 
   setupEnv3();
 
-  // 地上気圧を記録（高度基準点 = 0m）
+  // 起動時の海抜高度を基準点として記録（打ち上げ地点 = 0m）
+  // qmp.altitude は update() のたびにライブラリが計算する海抜高度 [m]
   for (int i = 0; i < 10; i++) {
     qmp.update();
     delay(100);
   }
-  groundPressurePa = qmp.pressure;
-  Serial.printf("Ground pressure: %.2f Pa\n", groundPressurePa);
+  refAltitude = qmp.altitude;
+  Serial.printf("Reference altitude: %.2f m\n", refAltitude);
 
   if (!csvLog.begin()) {
     stopWithError("CsvLogStore begin failed.");
@@ -116,17 +121,9 @@ void loop() {
 
   uint32_t timeMs = millis();
 
-  snprintf(
-    csvLine,
-    sizeof(csvLine),
-    "%lu,%lu,%.2f,%.2f,%.2f,%.2f,%.2f",
-    (unsigned long)timeMs,
-    (unsigned long)rowCount,
-    shtTemp,
-    shtHumidity,
-    qmp.cTemp,
-    qmp.pressure,
-    calcAltitude(qmp.pressure, qmp.cTemp, groundPressurePa));
+  snprintf(csvLine, sizeof(csvLine), "%lu,%lu,%.2f,%.2f,%.2f,%.2f,%.2f",
+           (unsigned long)timeMs, (unsigned long)rowCount, shtTemp, shtHumidity,
+           qmp.cTemp, qmp.pressure, qmp.altitude - refAltitude);  // 海抜高度から基準高度を引いて相対高度に
 
   csvResult = csvLog.println(csvLine);
 
@@ -134,8 +131,10 @@ void loop() {
     stopWithError("CSV write failed.");
   }
 
-  if (rowCount % 10 == 0) {
+  if (rowCount % 5 == 0) {
     Serial.print("CSV row: ");
     Serial.println(csvLine);
+
+    //Serial.println(String(shtTemp));
   }
 }
